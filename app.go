@@ -30,13 +30,22 @@ type VanDerWaalsConstant struct {
 	B float64
 }
 
+var AtomicWeight = map[Gas]float64{
+	Argon:    14.0067,
+	Helium:   4.002602,
+	Hydrogen: 1.00784,
+	Neon:     20.1797,
+	Nitrogen: 14.0067,
+	Oxygen:   15.999,
+}
+
 var VanDerWaalsConstants = map[Gas]VanDerWaalsConstant{
-	Helium:   VanDerWaalsConstant{0.0346, 0.0238},
-	Oxygen:   VanDerWaalsConstant{1.382, 0.03186},
-	Nitrogen: VanDerWaalsConstant{1.370, 0.0387},
 	Argon:    VanDerWaalsConstant{1.355, 0.03201},
-	Neon:     VanDerWaalsConstant{0.2135, 0.01709},
+	Helium:   VanDerWaalsConstant{0.0346, 0.0238},
 	Hydrogen: VanDerWaalsConstant{0.2476, 0.02661},
+	Neon:     VanDerWaalsConstant{0.2135, 0.01709},
+	Nitrogen: VanDerWaalsConstant{1.370, 0.0387},
+	Oxygen:   VanDerWaalsConstant{1.382, 0.03186},
 }
 
 type GasComposition map[Gas]float64
@@ -142,6 +151,14 @@ func GasToMoles(V float64, P float64, vdwConstants VanDerWaalsConstant, T float6
 	return term1/(a*b) - term3/term2 + (0.33333*V)/b
 }
 
+func (c1 Cylinder) GasWeight(gasComposition GasComposition, temperature float64) float64 {
+	var weightSum float64
+	for gasType, gasInfo := range gasComposition {
+		weightSum += GasToMoles(c1.CylinderVolume, c1.Pressure*gasInfo, VanDerWaalsConstants[gasType], temperature) * AtomicWeight[gasType]
+	}
+	return weightSum
+}
+
 func cylinderMolesToPressure(V float64, n float64, temperature float64, gasComposition GasComposition) float64 {
 	var pressureSum float64
 	for gasType, gasInfo := range gasComposition {
@@ -168,6 +185,14 @@ func (cl CylinderList) TotalVolume() float64 {
 		totalVolume += cylinder.CylinderVolume
 	}
 	return totalVolume
+}
+
+func (cl CylinderList) TotalGasWeight(gasComposition GasComposition, temperature float64) float64 {
+	var weightSum float64
+	for _, cylinder := range cl {
+		weightSum += cylinder.GasWeight(gasComposition, temperature)
+	}
+	return weightSum
 }
 
 // TotalGasVolume returns total gas volume for all listed cylinders
@@ -230,9 +255,11 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 type CylinderSummary struct {
 	Description                  string
 	DestinationCylinderGasVolume float64
+	DestinationCylinderGasWeight float64
 	DestinationCylinderPressure  float64
 	SourceCylinderGasVolume      float64
 	SourceCylinderPressure       float64
+	SourceCylinderGasWeight      float64
 }
 
 func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem GasSystem, gasComposition GasComposition, temperature float64, verbose bool, debug bool, printSourceSummary bool) CylinderSummary {
@@ -291,12 +318,14 @@ func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem Ga
 	return CylinderSummary{
 		Description:                  description,
 		DestinationCylinderGasVolume: destinationCylinderGasVolume,
+		DestinationCylinderGasWeight: destinationCylinders.TotalGasWeight(gasComposition, temperature),
 		DestinationCylinderPressure:  destinationCylinderPressure,
 		SourceCylinderGasVolume:      sourceCylinderGasVolume,
+		SourceCylinderGasWeight:      sourceCylinders.TotalGasWeight(gasComposition, temperature),
 		SourceCylinderPressure:       sourceCylinderPressure,
 	}
 }
-func printSummaries(cylinderSummaries []CylinderSummary) {
+func printSummaries(cylinderSummaries []CylinderSummary, verbose bool) {
 	var worstDestinationPressure float64
 	for _, cylinderSummary := range cylinderSummaries {
 		if cylinderSummary.DestinationCylinderPressure < worstDestinationPressure || worstDestinationPressure == 0 {
@@ -310,6 +339,9 @@ func printSummaries(cylinderSummaries []CylinderSummary) {
 			continue
 		}
 		fmt.Printf("%30s %7.0f %6.0f %8.0f %6.0f %10.2f%%\n", cylinderSummary.Description, cylinderSummary.SourceCylinderPressure, cylinderSummary.SourceCylinderGasVolume, cylinderSummary.DestinationCylinderPressure, cylinderSummary.DestinationCylinderGasVolume, 100*(cylinderSummary.DestinationCylinderPressure-worstDestinationPressure)/worstDestinationPressure)
+		if verbose {
+			fmt.Printf("                            Gas weight %6.0fg         %6.0fg\n", cylinderSummary.SourceCylinderGasWeight, cylinderSummary.DestinationCylinderGasWeight)
+		}
 	}
 }
 
@@ -410,6 +442,6 @@ func main() {
 		cylinderSummaries[a] = equalizeAndReport(cylinderConfiguration, gasSystem, gasComposition, temperature, *verboseFlag, *debugFlag, true)
 		a++
 	}
-	printSummaries(cylinderSummaries)
+	printSummaries(cylinderSummaries, *verboseFlag)
 
 }
