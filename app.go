@@ -7,15 +7,53 @@ import (
 	"os"
 )
 
+// Temperature represents gas temperature
+type Temperature float64
+
+// GasVolume is the amount of gas in liters
+type GasVolume float64
+
+// CylinderVolume is cylinder size in liters
+type CylinderVolume float64
+
+// GasWeight is the amount of of gas in kilograms (kg)
+type GasWeight float64
+
+// PressureBar represents pressure (in bar)
+type PressureBar float64
+
+// PressureFromVolumes returns a new PressureBar instance from gas volume and cylinder volume.
+func PressureFromVolumes(gasVolume GasVolume, totalVolume CylinderVolume) PressureBar {
+	return PressureBar(float64(gasVolume) / float64(totalVolume))
+}
+
+// PartialPressure returns a new partial pressure object from pressure and multiplier.
+func (p PressureBar) PartialPressure(pp float64) PressureBar {
+	return PressureBar(float64(p) * pp)
+}
+
+// GasWeightFromMole calculates gas weight based on the mole count and atomic weight.
+func GasWeightFromMole(moleCount MoleCount, atomicWeight float64) GasWeight {
+	return GasWeight(float64(moleCount) * atomicWeight)
+}
+
+// MoleCount represents number of atoms
+type MoleCount float64
+
+// GasSystem is the system used to calculate amount of the gas.
 type GasSystem int
 
 const (
+	// IdealGas uses ideal gas equations which do not compensate for pressure and temperature
 	IdealGas GasSystem = iota
+	// VanDerWaals uses Van Der Waals equations to compensate for temperature and pressure.
 	VanDerWaals
 )
 
+// Gas represents various gases cylinders may contain.
 type Gas int
 
+// Available gases
 const (
 	Helium Gas = iota
 	Oxygen
@@ -25,11 +63,13 @@ const (
 	Hydrogen
 )
 
+// VanDerWaalsConstant represents Van der Waals equation constants
 type VanDerWaalsConstant struct {
 	A float64
 	B float64
 }
 
+// AtomicWeight is the weight of a single mole in grams.
 var AtomicWeight = map[Gas]float64{
 	Argon:    14.0067,
 	Helium:   4.002602,
@@ -39,6 +79,7 @@ var AtomicWeight = map[Gas]float64{
 	Oxygen:   15.999,
 }
 
+// VanDerWaalsConstants holds Van der Waals constants for gases.
 var VanDerWaalsConstants = map[Gas]VanDerWaalsConstant{
 	Argon:    VanDerWaalsConstant{1.355, 0.03201},
 	Helium:   VanDerWaalsConstant{0.0346, 0.0238},
@@ -48,21 +89,22 @@ var VanDerWaalsConstants = map[Gas]VanDerWaalsConstant{
 	Oxygen:   VanDerWaalsConstant{1.382, 0.03186},
 }
 
+// GasComposition stores information about gases currently being processed
 type GasComposition map[Gas]float64
 
 // Equalize equalizes all input cylinders
-func Equalize(cylinders []*Cylinder, gasSystem GasSystem, gasComposition GasComposition, temperature float64, verbose bool, debug bool) {
-	var totalVolume float64
-	var pressureAfterEqualize float64
+func Equalize(cylinders []*Cylinder, gasSystem GasSystem, gasComposition GasComposition, temperature Temperature, verbose bool, debug bool) {
+	var totalVolume CylinderVolume
+	var pressureAfterEqualize PressureBar
 	if gasSystem == IdealGas {
-		var totalGasVolume float64
+		var totalGasVolume GasVolume
 		for i := range cylinders {
 			totalGasVolume += cylinders[i].GasVolume(gasSystem, gasComposition, temperature)
 			totalVolume += cylinders[i].CylinderVolume
 		}
-		pressureAfterEqualize = totalGasVolume / totalVolume
+		pressureAfterEqualize = PressureFromVolumes(totalGasVolume, totalVolume)
 	} else {
-		var totalMoles float64
+		var totalMoles MoleCount
 		for i := range cylinders {
 			moles := cylinders[i].Moles(temperature, gasComposition)
 			if debug {
@@ -87,57 +129,61 @@ func Equalize(cylinders []*Cylinder, gasSystem GasSystem, gasComposition GasComp
 // CylinderConfiguration holds information about available cylinders and cylinder configuration, such as manifolds
 type CylinderConfiguration struct {
 	DestinationCylinderIsTwinset bool
-	DestinationCylinderPressure  float64
-	DestinationCylinderVolume    float64
+	DestinationCylinderPressure  PressureBar
+	DestinationCylinderVolume    CylinderVolume
 	SourceCylinderIsTwinset      bool
-	SourceCylinderPressure       float64
-	SourceCylinderVolume         float64
+	SourceCylinderPressure       PressureBar
+	SourceCylinderVolume         CylinderVolume
 }
 
 // Cylinder represents a single cylinder and gas it contains
 type Cylinder struct {
 	Description    string
-	CylinderVolume float64
-	Pressure       float64
+	CylinderVolume CylinderVolume
+	Pressure       PressureBar
 }
 
 // GasVolume returns amount of gas in the cylinder
-func (c1 Cylinder) GasVolume(gasSystem GasSystem, gasComposition GasComposition, temperature float64) float64 {
+func (c1 Cylinder) GasVolume(gasSystem GasSystem, gasComposition GasComposition, temperature Temperature) GasVolume {
 	if gasSystem == IdealGas {
-		return c1.CylinderVolume * c1.Pressure
-	} else {
-		return gasCompositionToMoles(c1.CylinderVolume, c1.Pressure, temperature, gasComposition) * 22.4
+		return GasVolume(float64(c1.CylinderVolume) * float64(c1.Pressure))
 	}
+	return GasVolume(gasCompositionToMoles(c1.CylinderVolume, c1.Pressure, temperature, gasComposition) * 22.4)
 }
 
 // Equalize equalizes two cylinders
-func (c1 *Cylinder) Equalize(c2 *Cylinder, gasSystem GasSystem, gasComposition GasComposition, temperature float64, verbose bool, debug bool) {
+func (c1 *Cylinder) Equalize(c2 *Cylinder, gasSystem GasSystem, gasComposition GasComposition, temperature Temperature, verbose bool, debug bool) {
 	listOfCylinders := []*Cylinder{c1, c2}
 	Equalize(listOfCylinders, gasSystem, gasComposition, temperature, verbose, debug)
 }
 
-func (c1 *Cylinder) Moles(temperature float64, gasComposition GasComposition) float64 {
+// Moles returns number of atoms (in mole) inside a cylinder
+func (c1 *Cylinder) Moles(temperature Temperature, gasComposition GasComposition) MoleCount {
 	return gasCompositionToMoles(c1.CylinderVolume, c1.Pressure, temperature, gasComposition)
 }
 
-func gasCompositionToMoles(V float64, P float64, temperature float64, gasComposition GasComposition) float64 {
-	var moles float64
+func gasCompositionToMoles(cylinderVolume CylinderVolume, cylinderPressure PressureBar, temperature Temperature, gasComposition GasComposition) MoleCount {
+	var moles MoleCount
 	for gasType, gasInfo := range gasComposition {
-		moles += GasToMoles(V, gasInfo*P, VanDerWaalsConstants[gasType], temperature)
+		moles += GasToMoles(cylinderVolume, cylinderPressure.PartialPressure(gasInfo), VanDerWaalsConstants[gasType], temperature)
 	}
 	return moles
 }
 
-func GasToMoles(V float64, P float64, vdwConstants VanDerWaalsConstant, T float64) float64 {
+// GasToMoles calculates number of atoms in given cylinder
+func GasToMoles(cylinderVolume CylinderVolume, cylinderPressure PressureBar, vdwConstants VanDerWaalsConstant, temperature Temperature) MoleCount {
 	R := 0.0831
 	a := vdwConstants.A
 	b := vdwConstants.B
+	P := float64(cylinderPressure)
 
 	a2 := math.Pow(a, 2.0)
 	a3 := math.Pow(a, 3.0)
 	b2 := math.Pow(b, 2.0)
+	V := float64(cylinderVolume)
 	V2 := math.Pow(V, 2.0)
 	V3 := math.Pow(V, 3.0)
+	T := float64(temperature)
 
 	subterm1 := 2*a3*V3 + 18*a2*b2*P*V3 - 9*a2*b*R*T*V3
 	subterm2 := 3*a*b*(b*P*V2+R*T*V2) - a2*V2
@@ -148,47 +194,54 @@ func GasToMoles(V float64, P float64, vdwConstants VanDerWaalsConstant, T float6
 	term1 := 0.26457 * subterm3
 	term2 := a * b * subterm3
 	term3 := 0.41997 * subterm2
-	return term1/(a*b) - term3/term2 + (0.33333*V)/b
+	return MoleCount(term1/(a*b) - term3/term2 + (0.33333*V)/b)
 }
 
-func (c1 Cylinder) GasWeight(gasComposition GasComposition, temperature float64) float64 {
-	var weightSum float64
+// GasWeight returns weight of the gas stored inside the cylinder
+func (c1 Cylinder) GasWeight(gasComposition GasComposition, temperature Temperature) GasWeight {
+	var weightSum GasWeight
 	for gasType, gasInfo := range gasComposition {
-		weightSum += GasToMoles(c1.CylinderVolume, c1.Pressure*gasInfo, VanDerWaalsConstants[gasType], temperature) * AtomicWeight[gasType]
+		moleCount := GasToMoles(c1.CylinderVolume, c1.Pressure.PartialPressure(gasInfo), VanDerWaalsConstants[gasType], temperature)
+		gasWeight := GasWeightFromMole(moleCount, AtomicWeight[gasType])
+		weightSum += gasWeight
 	}
 	return weightSum
 }
 
-func cylinderMolesToPressure(V float64, n float64, temperature float64, gasComposition GasComposition) float64 {
-	var pressureSum float64
+func cylinderMolesToPressure(cylinderVolume CylinderVolume, n MoleCount, temperature Temperature, gasComposition GasComposition) PressureBar {
+	var pressureSum PressureBar
 	for gasType, gasInfo := range gasComposition {
-		pressureSum += MolesToPressure(V, n*gasInfo, temperature, VanDerWaalsConstants[gasType])
+		pressureSum += MolesToPressure(cylinderVolume, MoleCount(float64(n)*gasInfo), temperature, VanDerWaalsConstants[gasType])
 	}
 	return pressureSum
 }
 
-func MolesToPressure(V float64, n float64, T float64, vdwConstants VanDerWaalsConstant) float64 {
+// MolesToPressure returns pressure based on the volume, atomic count and gas composition.
+func MolesToPressure(cylinderVolume CylinderVolume, moleCount MoleCount, T Temperature, vdwConstants VanDerWaalsConstant) PressureBar {
+	V := float64(cylinderVolume)
 	a := vdwConstants.A
 	b := vdwConstants.B
+	n := float64(moleCount)
 	R := 0.0831
 	V2 := math.Pow(V, 2.0)
-	return n * (-(a*n)/V2 - (R*T)/(b*n-V))
+	return PressureBar(n * (-(a*n)/V2 - (R*float64(T))/(b*n-V)))
 }
 
 // CylinderList is a list of cylinders
 type CylinderList []Cylinder
 
 // TotalVolume returns total cylinder volume for all listed cylinders
-func (cl CylinderList) TotalVolume() float64 {
-	var totalVolume float64
+func (cl CylinderList) TotalVolume() CylinderVolume {
+	var totalVolume CylinderVolume
 	for _, cylinder := range cl {
 		totalVolume += cylinder.CylinderVolume
 	}
 	return totalVolume
 }
 
-func (cl CylinderList) TotalGasWeight(gasComposition GasComposition, temperature float64) float64 {
-	var weightSum float64
+// TotalGasWeight calculates the weight of the gas for all cylinders in cylinder list.
+func (cl CylinderList) TotalGasWeight(gasComposition GasComposition, temperature Temperature) GasWeight {
+	var weightSum GasWeight
 	for _, cylinder := range cl {
 		weightSum += cylinder.GasWeight(gasComposition, temperature)
 	}
@@ -196,8 +249,8 @@ func (cl CylinderList) TotalGasWeight(gasComposition GasComposition, temperature
 }
 
 // TotalGasVolume returns total gas volume for all listed cylinders
-func (cl CylinderList) TotalGasVolume(gasSystem GasSystem, gasComposition GasComposition, temperature float64) float64 {
-	var totalGasVolume float64
+func (cl CylinderList) TotalGasVolume(gasSystem GasSystem, gasComposition GasComposition, temperature Temperature) GasVolume {
+	var totalGasVolume GasVolume
 	for _, cylinder := range cl {
 		totalGasVolume += cylinder.GasVolume(gasSystem, gasComposition, temperature)
 	}
@@ -209,12 +262,12 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		*sourceCylinders = []Cylinder{
 			Cylinder{
 				Description:    "left",
-				CylinderVolume: cylinderConfiguration.SourceCylinderVolume / 2,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
 			},
 			Cylinder{
 				Description:    "right",
-				CylinderVolume: cylinderConfiguration.SourceCylinderVolume / 2,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
 			},
 		}
@@ -222,7 +275,7 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		*sourceCylinders = []Cylinder{
 			Cylinder{
 				Description:    "source",
-				CylinderVolume: cylinderConfiguration.SourceCylinderVolume,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
 			},
 		}
@@ -231,12 +284,12 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		*destinationCylinders = []Cylinder{
 			Cylinder{
 				Description:    "left",
-				CylinderVolume: cylinderConfiguration.DestinationCylinderVolume / 2,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
 			},
 			Cylinder{
 				Description:    "right",
-				CylinderVolume: cylinderConfiguration.DestinationCylinderVolume / 2,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
 			},
 		}
@@ -244,7 +297,7 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		*destinationCylinders = []Cylinder{
 			Cylinder{
 				Description:    "destination",
-				CylinderVolume: cylinderConfiguration.DestinationCylinderVolume,
+				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
 			},
 		}
@@ -254,15 +307,15 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 // CylinderSummary has information about the end result of gas transfers
 type CylinderSummary struct {
 	Description                  string
-	DestinationCylinderGasVolume float64
-	DestinationCylinderGasWeight float64
-	DestinationCylinderPressure  float64
-	SourceCylinderGasVolume      float64
-	SourceCylinderPressure       float64
-	SourceCylinderGasWeight      float64
+	DestinationCylinderGasVolume GasVolume
+	DestinationCylinderGasWeight GasWeight
+	DestinationCylinderPressure  PressureBar
+	SourceCylinderGasVolume      GasVolume
+	SourceCylinderPressure       PressureBar
+	SourceCylinderGasWeight      GasWeight
 }
 
-func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem GasSystem, gasComposition GasComposition, temperature float64, verbose bool, debug bool, printSourceSummary bool) CylinderSummary {
+func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem GasSystem, gasComposition GasComposition, temperature Temperature, verbose bool, debug bool, printSourceSummary bool) CylinderSummary {
 	var sourceCylinders CylinderList
 	var destinationCylinders CylinderList
 	initializeCylinders(cylinderConfiguration, &sourceCylinders, &destinationCylinders)
@@ -309,9 +362,9 @@ func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem Ga
 		fmt.Println("Destination cylinders gas volume:", destinationCylinders.TotalGasVolume(gasSystem, gasComposition, temperature))
 	}
 	sourceCylinderGasVolume := sourceCylinders.TotalGasVolume(gasSystem, gasComposition, temperature)
-	sourceCylinderPressure := sourceCylinderGasVolume / sourceCylinders.TotalVolume()
+	sourceCylinderPressure := PressureFromVolumes(sourceCylinderGasVolume, sourceCylinders.TotalVolume())
 	destinationCylinderGasVolume := destinationCylinders.TotalGasVolume(gasSystem, gasComposition, temperature)
-	destinationCylinderPressure := destinationCylinderGasVolume / destinationCylinders.TotalVolume()
+	destinationCylinderPressure := PressureFromVolumes(destinationCylinderGasVolume, destinationCylinders.TotalVolume())
 	fmt.Printf("Source cylinders: %.0fl, %.0fbar\n", sourceCylinderGasVolume, sourceCylinderPressure)
 	fmt.Printf("Destination cylinders: %.0fl, %.0fbar\n", destinationCylinderGasVolume, destinationCylinderPressure)
 	fmt.Println()
@@ -326,7 +379,7 @@ func equalizeAndReport(cylinderConfiguration CylinderConfiguration, gasSystem Ga
 	}
 }
 func printSummaries(cylinderSummaries []CylinderSummary, verbose bool) {
-	var worstDestinationPressure float64
+	var worstDestinationPressure PressureBar
 	for _, cylinderSummary := range cylinderSummaries {
 		if cylinderSummary.DestinationCylinderPressure < worstDestinationPressure || worstDestinationPressure == 0 {
 			worstDestinationPressure = cylinderSummary.DestinationCylinderPressure
@@ -403,7 +456,7 @@ func main() {
 		println("Source cylinder volume size must be greater than 0 and less than 1000")
 		os.Exit(1)
 	}
-	temperature := *temperatureFlag + 273.15
+	temperature := Temperature(*temperatureFlag + 273.15)
 	var gasSystem GasSystem
 	if *useIdealGasFlag {
 		gasSystem = IdealGas
@@ -413,11 +466,11 @@ func main() {
 
 	cylinderConfiguration := CylinderConfiguration{
 		DestinationCylinderIsTwinset: *destinationCylinderIsTwinsetFlag,
-		DestinationCylinderPressure:  *destinationCylinderPressureFlag,
-		DestinationCylinderVolume:    *destinationCylinderVolumeFlag,
+		DestinationCylinderPressure:  PressureBar(*destinationCylinderPressureFlag),
+		DestinationCylinderVolume:    CylinderVolume(*destinationCylinderVolumeFlag),
 		SourceCylinderIsTwinset:      *sourceCylinderIsTwinsetFlag,
-		SourceCylinderPressure:       *sourceCylinderPressureFlag,
-		SourceCylinderVolume:         *sourceCylinderVolumeFlag,
+		SourceCylinderPressure:       PressureBar(*sourceCylinderPressureFlag),
+		SourceCylinderVolume:         CylinderVolume(*sourceCylinderVolumeFlag),
 	}
 	cylinderSummaries := make([]CylinderSummary, 4)
 	a := 0
