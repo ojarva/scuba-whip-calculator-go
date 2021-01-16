@@ -39,14 +39,7 @@ var VanDerWaalsConstants = map[Gas]VanDerWaalsConstant{
 	Hydrogen: VanDerWaalsConstant{0.2476, 0.02661},
 }
 
-type GasComposition struct {
-	Helium   float64
-	Oxygen   float64
-	Nitrogen float64
-	Argon    float64
-	Neon     float64
-	Hydrogen float64
-}
+type GasComposition map[Gas]float64
 
 // Equalize equalizes all input cylinders
 func Equalize(cylinders []*Cylinder, gasSystem GasSystem, gasComposition GasComposition, temperature float64, verbose bool, debug bool) {
@@ -119,7 +112,11 @@ func (c1 *Cylinder) Moles(temperature float64, gasComposition GasComposition) fl
 }
 
 func gasCompositionToMoles(V float64, P float64, temperature float64, gasComposition GasComposition) float64 {
-	return GasToMoles(V, gasComposition.Argon*P, VanDerWaalsConstants[Argon], temperature) + GasToMoles(V, gasComposition.Helium*P, VanDerWaalsConstants[Helium], temperature) + GasToMoles(V, gasComposition.Hydrogen*P, VanDerWaalsConstants[Hydrogen], temperature) + GasToMoles(V, gasComposition.Neon*P, VanDerWaalsConstants[Neon], temperature) + GasToMoles(V, gasComposition.Nitrogen*P, VanDerWaalsConstants[Nitrogen], temperature) + GasToMoles(V, gasComposition.Oxygen*P, VanDerWaalsConstants[Oxygen], temperature)
+	var moles float64
+	for gasType, gasInfo := range gasComposition {
+		moles += GasToMoles(V, gasInfo*P, VanDerWaalsConstants[gasType], temperature)
+	}
+	return moles
 }
 
 func GasToMoles(V float64, P float64, vdwConstants VanDerWaalsConstant, T float64) float64 {
@@ -146,7 +143,11 @@ func GasToMoles(V float64, P float64, vdwConstants VanDerWaalsConstant, T float6
 }
 
 func cylinderMolesToPressure(V float64, n float64, temperature float64, gasComposition GasComposition) float64 {
-	return MolesToPressure(V, n*gasComposition.Argon, temperature, VanDerWaalsConstants[Argon]) + MolesToPressure(V, n*gasComposition.Helium, temperature, VanDerWaalsConstants[Helium]) + MolesToPressure(V, n*gasComposition.Hydrogen, temperature, VanDerWaalsConstants[Hydrogen]) + MolesToPressure(V, n*gasComposition.Neon, temperature, VanDerWaalsConstants[Neon]) + MolesToPressure(V, n*gasComposition.Nitrogen, temperature, VanDerWaalsConstants[Nitrogen]) + MolesToPressure(V, n*gasComposition.Oxygen, temperature, VanDerWaalsConstants[Oxygen])
+	var pressureSum float64
+	for gasType, gasInfo := range gasComposition {
+		pressureSum += MolesToPressure(V, n*gasInfo, temperature, VanDerWaalsConstants[gasType])
+	}
+	return pressureSum
 }
 
 func MolesToPressure(V float64, n float64, T float64, vdwConstants VanDerWaalsConstant) float64 {
