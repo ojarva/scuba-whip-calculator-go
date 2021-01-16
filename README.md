@@ -4,9 +4,7 @@ Scuba transfer whip pressure calculator
 A small helper program for calculating pressures achieved when using a transfer whip between
 scuba tanks, especially useful for source/destination twinsets with manifold that can be closed.
 
-This uses ideal gas, which roughly means any cylinders with pressures significantly higher than
-200bar will have some noticeably errors. Similarly, helium-rich high-pressure transfers won't 
-have precise results.
+By default Van Der Waals equations are used for calculating amount of gas. Use `-use-ideal-gas` parameter to use ideal gas equation instead.
 
 Installation
 ------------
