@@ -25,6 +25,9 @@ type GasWeight float64
 // PressureBar represents pressure (in bar)
 type PressureBar float64
 
+// AtomicWeight is an atomic weight for an element
+type AtomicWeight float64
+
 // PressureFromVolumes returns a new PressureBar instance from gas volume and cylinder volume.
 func PressureFromVolumes(gasVolume GasVolume, totalVolume CylinderVolume) PressureBar {
 	return PressureBar(float64(gasVolume) / float64(totalVolume))
@@ -36,8 +39,8 @@ func (p PressureBar) PartialPressure(pp float64) PressureBar {
 }
 
 // GasWeightFromMole calculates gas weight based on the mole count and atomic weight.
-func GasWeightFromMole(moleCount MoleCount, atomicWeight float64) GasWeight {
-	return GasWeight(float64(moleCount) * atomicWeight)
+func GasWeightFromMole(moleCount MoleCount, atomicWeight AtomicWeight) GasWeight {
+	return GasWeight(float64(moleCount) * float64(atomicWeight))
 }
 
 // MoleCount represents number of atoms
@@ -72,8 +75,8 @@ type VanDerWaalsConstant struct {
 	B float64
 }
 
-// AtomicWeight is the weight of a single mole in grams.
-var AtomicWeight = map[Gas]float64{
+// AtomicWeightLookup is the weight of a single mole in grams.
+var AtomicWeightLookup = map[Gas]AtomicWeight{
 	Argon:    14.0067,
 	Helium:   4.002602,
 	Hydrogen: 1.00784,
@@ -204,7 +207,7 @@ func (c1 Cylinder) GasWeight(gasComposition GasComposition, temperature Temperat
 	var weightSum GasWeight
 	for gasType, gasInfo := range gasComposition {
 		moleCount := GasToMoles(c1.CylinderVolume, c1.Pressure.PartialPressure(gasInfo), VanDerWaalsConstants[gasType], temperature)
-		gasWeight := GasWeightFromMole(moleCount, AtomicWeight[gasType])
+		gasWeight := GasWeightFromMole(moleCount, AtomicWeightLookup[gasType])
 		weightSum += gasWeight
 	}
 	return weightSum
