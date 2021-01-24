@@ -7,6 +7,9 @@ import (
 	"os"
 )
 
+// R is an ideal gas constant
+const R = 0.0831
+
 // Temperature represents gas temperature
 type Temperature float64
 
@@ -81,12 +84,12 @@ var AtomicWeight = map[Gas]float64{
 
 // VanDerWaalsConstants holds Van der Waals constants for gases.
 var VanDerWaalsConstants = map[Gas]VanDerWaalsConstant{
-	Argon:    VanDerWaalsConstant{1.355, 0.03201},
-	Helium:   VanDerWaalsConstant{0.0346, 0.0238},
-	Hydrogen: VanDerWaalsConstant{0.2476, 0.02661},
-	Neon:     VanDerWaalsConstant{0.2135, 0.01709},
-	Nitrogen: VanDerWaalsConstant{1.370, 0.0387},
-	Oxygen:   VanDerWaalsConstant{1.382, 0.03186},
+	Argon:    {A: 1.355, B: 0.03201},
+	Helium:   {A: 0.0346, B: 0.0238},
+	Hydrogen: {A: 0.2476, B: 0.02661},
+	Neon:     {A: 0.2135, B: 0.01709},
+	Nitrogen: {A: 1.370, B: 0.0387},
+	Oxygen:   {A: 1.382, B: 0.03186},
 }
 
 // GasComposition stores information about gases currently being processed
@@ -172,7 +175,6 @@ func gasCompositionToMoles(cylinderVolume CylinderVolume, cylinderPressure Press
 
 // GasToMoles calculates number of atoms in given cylinder
 func GasToMoles(cylinderVolume CylinderVolume, cylinderPressure PressureBar, vdwConstants VanDerWaalsConstant, temperature Temperature) MoleCount {
-	R := 0.0831
 	a := vdwConstants.A
 	b := vdwConstants.B
 	P := float64(cylinderPressure)
@@ -222,7 +224,6 @@ func MolesToPressure(cylinderVolume CylinderVolume, moleCount MoleCount, T Tempe
 	a := vdwConstants.A
 	b := vdwConstants.B
 	n := float64(moleCount)
-	R := 0.0831
 	V2 := math.Pow(V, 2.0)
 	return PressureBar(n * (-(a*n)/V2 - (R*float64(T))/(b*n-V)))
 }
@@ -260,12 +261,12 @@ func (cl CylinderList) TotalGasVolume(gasSystem GasSystem, gasComposition GasCom
 func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCylinders *CylinderList, destinationCylinders *CylinderList) {
 	if cylinderConfiguration.SourceCylinderIsTwinset {
 		*sourceCylinders = []Cylinder{
-			Cylinder{
+			{
 				Description:    "left",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
 			},
-			Cylinder{
+			{
 				Description:    "right",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
@@ -273,7 +274,7 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		}
 	} else {
 		*sourceCylinders = []Cylinder{
-			Cylinder{
+			{
 				Description:    "source",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.SourceCylinderVolume),
 				Pressure:       cylinderConfiguration.SourceCylinderPressure,
@@ -282,12 +283,12 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 	}
 	if cylinderConfiguration.DestinationCylinderIsTwinset {
 		*destinationCylinders = []Cylinder{
-			Cylinder{
+			{
 				Description:    "left",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
 			},
-			Cylinder{
+			{
 				Description:    "right",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume / 2),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
@@ -295,7 +296,7 @@ func initializeCylinders(cylinderConfiguration CylinderConfiguration, sourceCyli
 		}
 	} else {
 		*destinationCylinders = []Cylinder{
-			Cylinder{
+			{
 				Description:    "destination",
 				CylinderVolume: CylinderVolume(cylinderConfiguration.DestinationCylinderVolume),
 				Pressure:       cylinderConfiguration.DestinationCylinderPressure,
